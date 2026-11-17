@@ -475,11 +475,13 @@ def tool_spectron_snapshot(args):
             "detail": str(exc),
             "note": (
                 "On-demand snapshots need the camera's P2P channel "
-                "(JSON_CMD_SNAPSHOT_IMG over a TCP DevLgn/relay session). "
-                "That client is phase-2 follow-up work and drops into "
-                "p2p_client.py next to this server; no server change will "
-                "be needed. Cloud photos are available now via "
-                "spectron_photos."
+                "(JSON_CMD_SNAPSHOT_IMG over a TCP relay session). The "
+                "client protocol is fully reverse-engineered — handshake "
+                "and TCPRSStart reproduced byte-for-byte (see "
+                "p2p-research/) — but the vendor's servers refuse every "
+                "data-phase packet after the handshake, so this tool "
+                "stays stubbed until that opens. Cloud photos are "
+                "available now via spectron_photos."
             ),
         }
         return result, result["message"] + " — " + result["note"]
