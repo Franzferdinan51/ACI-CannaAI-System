@@ -21,6 +21,17 @@ with AC Infinity gear can build the same thing:
   "CannaAI" half: twice-daily automated grow checks that combine probe
   readings, leaf readings, and camera photos, and flag disease or pests.
 
+## Best used in conjunction with CannaAI
+
+This repo is the hardware and data layer. It is **best used in conjunction
+with [CannaAI](https://github.com/Franzferdinan51/CannaAI)** — the grow
+assistant that consumes this system's feed, sensors, and camera photos to
+do computer-vision plant diagnosis, grow journaling, tent monitoring, and
+breeding tracking. The ACI system keeps CannaAI's eyes and hands in the
+tent; CannaAI is the brain that turns the readings into decisions. Each
+works alone, but they were built for each other and run together in
+production.
+
 The cameras were the undocumented part. Every public AC Infinity project
 covers controllers; the Spectron 3/7 had **zero** public API documentation
 — no endpoints, no photo access, nothing. The camera half of this repo
