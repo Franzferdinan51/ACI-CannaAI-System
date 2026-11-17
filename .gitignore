@@ -1,0 +1,11 @@
+# credentials — never commit your AC Infinity token
+token.json
+.config/
+
+# python
+__pycache__/
+*.pyc
+
+# local photos pulled from your own camera
+spectron-photos/
+*.jpg

@@ -1,0 +1,5 @@
+# ac-infinity MCP server — requirements
+#
+# NONE. The server is pure Python standard library (json, os, sys,
+# urllib, datetime) and needs no pip installs. Any python3 >= 3.9 works,
+# including the macOS system python (/usr/bin/python3).
