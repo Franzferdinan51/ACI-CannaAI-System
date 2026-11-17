@@ -20,9 +20,11 @@ Tools:
                     human units
   spectron_photos   cloud photo log (day-aligned windows, deduped);
                     optionally downloads the JPEGs
-  spectron_snapshot STUB — on-demand P2P snapshot is not available yet;
-                    returns a structured "experimental" result. The real
-                    client drops into p2p_client.py (same directory).
+  spectron_snapshot on-demand snapshot via the vendor's own SDK
+                    (libgqipcsdk.so) hosted in an ephemeral Android
+                    emulator rig on this machine — see p2p_client.py.
+                    Returns main (4K) + sub (1080p) stills. Takes
+                    ~1-5 min (rig setup + boot + capture).
 
 Run:  python3 server.py        (speaks MCP on stdin/stdout; logs to stderr)
 """
@@ -40,9 +42,9 @@ TOKEN_FILE = os.environ.get(
     "ACI_TOKEN_FILE", os.path.expanduser("~/.config/aci/token.json")
 )
 USER_AGENT = "okhttp/4.12.0"
-CAMERA_DEV_ID = os.environ.get("ACI_CAMERA_DEV_ID", "")  # Spectron 7 — your camera's devId (see README: Setup)
+CAMERA_DEV_ID = os.environ.get("ACI_CAMERA_DEV_ID", "")  # Spectron 7
 SERVER_NAME = "ac-infinity"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.1.0"
 DEFAULT_PROTOCOL = "2024-11-05"
 
 # Album/photo queries use the camera's day; ET day windows are the proven
@@ -457,34 +459,49 @@ def tool_spectron_photos(args):
 
 
 def tool_spectron_snapshot(args):
-    """STUB: the P2P snapshot client lands in p2p_client.py later."""
+    """On-demand snapshot via the genuine vendor SDK (p2p_client.py).
+
+    Boots the ephemeral emulator rig on this machine, connects with the
+    composite credential (intstr + ":" + key) exactly as the app does,
+    captures main + sub stills, tears the rig down. Slow (~1-5 min).
+    """
     dev_id = str(args.get("dev_id") or CAMERA_DEV_ID)
     try:
         import p2p_client
         shot = p2p_client.snapshot(dev_id, args.get("download_dir"))
-        result = {"available": True, "experimental": True, "snapshot": shot}
-        return result, "snapshot captured: %s" % json.dumps(shot)
-    except Exception as exc:  # P2PNotAvailable today; honest error later
+        result = {"available": True, "snapshot": shot}
+        text = (
+            "snapshot captured (SDK codes: %s)\n"
+            "  main: %s (%d bytes, %sx%s)\n"
+            "  sub:  %s (%d bytes, %sx%s)\n"
+            "  timings: %s"
+            % (
+                json.dumps(shot.get("sdk", {})),
+                shot["main"]["path"], shot["main"]["bytes"],
+                shot["main"].get("width"), shot["main"].get("height"),
+                shot["sub"]["path"], shot["sub"]["bytes"],
+                shot["sub"].get("width"), shot["sub"].get("height"),
+                json.dumps(shot.get("timings", {})),
+            )
+        )
+        return result, text
+    except Exception as exc:
         result = {
             "available": False,
-            "experimental": True,
-            "status": "not_available",
+            "status": "failed",
             "tool": "spectron_snapshot",
             "devId": dev_id,
-            "message": "experimental: P2P snapshot not yet available",
+            "message": "on-demand snapshot failed",
             "detail": str(exc),
             "note": (
-                "On-demand snapshots need the camera's P2P channel "
-                "(JSON_CMD_SNAPSHOT_IMG over a TCP relay session). The "
-                "client protocol is fully reverse-engineered — handshake "
-                "and TCPRSStart reproduced byte-for-byte (see "
-                "p2p-research/) — but the vendor's servers refuse every "
-                "data-phase packet after the handshake, so this tool "
-                "stays stubbed until that opens. Cloud photos are "
-                "available now via spectron_photos."
+                "The snapshot runs the vendor's own SDK in an ephemeral "
+                "Android emulator rig on this machine (see "
+                "p2p_client.py). detail carries the failing step and "
+                "the exact SDK return codes. Cloud photos remain "
+                "available via spectron_photos."
             ),
         }
-        return result, result["message"] + " — " + result["note"]
+        return result, result["message"] + ": " + result["detail"]
 
 
 TOOLS = [
@@ -548,9 +565,14 @@ TOOLS = [
     {
         "name": "spectron_snapshot",
         "description": (
-            "STUB / experimental: on-demand Spectron 7 snapshot over the "
-            "P2P channel. Not yet available — returns a structured "
-            "not_available result. Use spectron_photos for cloud photos."
+            "On-demand Spectron 7 snapshot: boots an ephemeral Android "
+            "emulator rig on the MCP host, runs the vendor's own SDK "
+            "(the library from the official app) with the account's "
+            "P2P credentials, and captures a main (3840x2160) + sub "
+            "(1920x1080) still pair, then tears the rig down. Slow "
+            "(~1-5 min). Returns local JPEG paths + SDK return codes. "
+            "Stills are session-only; they do not appear in the cloud "
+            "photo log."
         ),
         "inputSchema": {
             "type": "object",
@@ -559,8 +581,9 @@ TOOLS = [
                            "description": "Camera devId (defaults to the "
                                           "Spectron 7)."},
                 "download_dir": {"type": "string",
-                                 "description": "Where a future snapshot "
-                                                "JPEG would be saved."},
+                                 "description": "Directory for the "
+                                                "snapshot JPEGs "
+                                                "(default ~/spectron-photos)."},
             },
             "additionalProperties": False,
         },

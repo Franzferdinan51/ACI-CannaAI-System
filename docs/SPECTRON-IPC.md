@@ -308,3 +308,52 @@ full log in the goal progress.md.
   future on-demand path would have to come from the native-P2P data
   phase opening (blocked vendor-side, protocol space exhausted) or a
   future app/firmware change adding a cloud capture endpoint.
+
+## Genuine-SDK session — 2026-11-16 late (PHASE 3: SOLVED, phone-free on-demand WORKS)
+
+The one angle phases 1–2 never tried: run the vendor's own library
+instead of a reimplementation. Hosted on the Mac in an Android emulator
+(arm64 API-34 google_apis image on a 14 GB RAM disk — Mac disks are
+near-full; AVD + SDK on RAM, detached after, zero footprint), a minimal
+harness APK re-declares the app's JNI facade classes
+(com.eternal.media.client.{GqSdk, GqClient, GqProtocolHead}, identical
+signatures) so the genuine libgqipcsdk.so binds unchanged. Credentials
+(did/intstr/key from getP2PInfo) are fetched in-process by a host feeder
+and handed to the app over an adb-forwarded loopback socket — never on
+disk, never logged.
+
+App call sequence reconstructed from the decompile (v2.1.1):
+GqSdk.openLog(5) → nativeInit(0, "Android_"+android_id, intstr, false)
+→ nativeCreate (+ setAutoReconnect(true,-1), setCmdTimeout(10000)) →
+setCallbackEnabled(0,1,4,5) → nativeConnect(handle, did,
+intstr + ":" + key, 122, null) — the composite credential and flags
+122 are what every app call site passes (configureConnection);
+byServerString is null. Then nativeLiveStart / nativeSnapshotImg /
+nativeSubSnapshotImg(handle, 0, cb).
+
+LIVE RESULTS (6/6 sessions, 2026-11-16 23:44–23:54 ET): init 0,
+connect 0 in 108–1132 ms, checkConnection 0, heartbeat 0.
+- Live stream: _onNativeData type 1, HEVC 1920x1080 ~15 fps (I ~130 KB,
+  P ~1-2 KB); concatenated payloads decode directly in ffmpeg. Frame
+  extracted + verified: in-frame overlay 11/16/2026 11:44:25 PM ==
+  wall clock at capture.
+- Main still: snapshotImg → cmd ack {"cmd":786, code 200} ~0.2 s →
+  type-4 callback ~3 s later: single JPEG 3840x2160, ~2.0–2.1 MB.
+  Verified fresh (overlay 11:47:18 PM). Works before live start and
+  while live runs.
+- Sub still: subSnapshotImg(handle, 0, cb) → ack {"cmd":804, code 200}
+  → type-5 callback: JPEG 1920x1080, 237,840 B (soil-level view,
+  verified). With int=1 the camera answers {cmd 804, code 408 TIMEOUT}
+  and the call returns -408 — the app passes 0.
+- Teardown clean every run (liveStop/disconnect/cleanup all 0).
+- SDK-triggered stills are delivered to the session only; they did NOT
+  appear in the cloud photo log (checked ~23:52; last entry 23:20
+  timed shot).
+
+Why it works: our packets were already byte-identical; the blocker was
+session orchestration that only the genuine library performs. Full
+recipe + harness sources + evidence frames:
+~/workspace/spectron-pppp/harness/ (README.md is the MCP-wiring
+recipe). spectron_snapshot is now implementable: emulator+harness up →
+feed creds → snapshot → pull photo_type4_*.jpg (main) /
+photo_type5_*.jpg (sub) via adb exec-out run-as.

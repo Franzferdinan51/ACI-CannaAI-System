@@ -1,6 +1,6 @@
 # ac-infinity MCP server
 
-A Model Context Protocol (MCP) server for the author's AC Infinity gear — the
+A Model Context Protocol (MCP) server for the author' AC Infinity gear — the
 3x3 Tent / Clone Chamber controllers and the Spectron 7 camera — speaking
 to the AC Infinity cloud API (`https://www.acinfinityserver.com`, the same
 unofficial API the mobile app uses).
@@ -21,7 +21,8 @@ Full API dossier (endpoint contract, photo-window traps, P2P state):
 | File | What |
 |---|---|
 | `server.py` | The MCP server (self-contained at runtime). |
-| `p2p_client.py` | Drop-in slot for the future P2P snapshot client; today it raises `P2PNotAvailable`, which `spectron_snapshot` reports as a structured stub result. |
+| `p2p_client.py` | On-demand snapshot rig: boots an ephemeral Android emulator on the Mac, runs the vendor's own SDK via the harness in `rig/harness/`, captures main + sub stills. Credentials are fed in-process only. |
+| `rig/harness/` | The GQ harness (APK sources + build.sh + credential feeder) driven by `p2p_client.py`. Full recipe: `../../spectron-pppp/harness/README.md`. |
 | `tests/test_mcp.py` | Stdio test client: initialize + tools/list + tools/call, prints responses. |
 
 ## Auth
@@ -68,14 +69,21 @@ categories 0–5 and dedupes by `photoTime`. Returns the record list
 expiry, `thumbsUrl`, `rid`). With `download_dir`, JPEGs are downloaded as
 `spectron-<photoTime>.jpg` and each record gains a `localPath`.
 
-### `spectron_snapshot` — STUB
-On-demand snapshot needs the camera's P2P channel
-(`JSON_CMD_SNAPSHOT_IMG` over a TCP DevLgn/relay session — see
-`../SPECTRON-IPC.md`). Not implemented yet: the tool returns a structured
-`{available: false, experimental: true, status: "not_available",
-message: "experimental: P2P snapshot not yet available", …}` result.
-When the client lands in `p2p_client.py`, this tool works with no server
-changes. Use `spectron_photos` for cloud photos meanwhile.
+### `spectron_snapshot` — `dev_id` (optional), `download_dir` (optional)
+On-demand snapshot, solved 2026-11-16: a hand-reimplemented P2P client
+was refused by the vendor's relay servers, but the vendor's own SDK
+library connects — so this tool runs that library. It boots an
+ephemeral Android emulator rig (RAM disk; the Mac's disks are nearly
+full), replays the app's exact SDK call sequence with the composite
+credential `intstr + ":" + key` (fetched in-process from `getP2PInfo`,
+never persisted), and captures a main still (3840×2160, ~2 MB) plus a
+sub-camera still (1920×1080). The rig is torn down afterwards; nothing
+is left running. Slow: ~1–5 min including rig setup and boot. Returns
+local JPEG paths, byte counts, dimensions, the exact SDK return codes,
+and phase timings; failures return `{available: false,
+status: "failed", detail: …}` with the failing step and SDK codes.
+SDK-triggered stills are session-only — they do not appear in the
+cloud photo log (`spectron_photos`).
 
 ## Hermes registration (Mac)
 
