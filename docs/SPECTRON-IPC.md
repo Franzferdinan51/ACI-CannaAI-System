@@ -1,7 +1,7 @@
 # Spectron IPC — AC Infinity camera API dossier
 
 Reverse-engineered 2026-11-16 by Juno (jadx decompile of the official Android
-app v2.1.1 + live probing against the author's own account/camera). No public
+app v2.1.1 + live probing against the author' own account/camera). No public
 documentation of this API exists anywhere as of this writing — every community
 AC Infinity project covers controllers only. This file is the reference.
 
@@ -81,16 +81,38 @@ First read 2026-11-16: leaf 63.0°F vs 71.7°F air; cam VPD 0.70 vs probe 0.82.
   {fields…, devId, cmd}. cmd codes (from IpcSettingRepository):
   51 timelapse, 59 auto-photo status, 516 side-cam auto-photo, 58 timezone,
   510 resolution, 512 plant AI, 514 temperature display, 515 sensor readings.
-- Every app-shaped write tried returns **500** (or 999999 with appId added to
-  the form) and changes nothing (verified by read-back diff). The app also
-  sends a HeaderInterceptor header set (token, appVersion "2.1.1",
-  phoneType "2", languageType…) and a RefreshTokenInterceptor adds
-  minversion/devType — including all of them still 500s.
-- Two unsolved ingredients: (a) a refresh-token auth subsystem exists in the
-  app (/api/auth/refresh, /api/auth/newToken; no community project uses it);
-  (b) the app ALSO syncs settings to the camera over its P2P channel
-  (GqClient.setTakePhotosRegularly(0, interval, …) fires when auto-photo is
-  enabled) — so even a successful cloud write may not arm the camera alone.
+- **WRITE MATRIX — RESOLVED 2026-11-16 late (phone-free trigger dig).**
+  Exact app construction (IpcSettingRepository): form map = ONLY the
+  setting field(s), then devId, then cmd appended last; POST
+  /api/ipc/setting @FormUrlEncoded. cmd 512 routes to the service's
+  updateCamareAI method (15 s timeouts); all other cmds → updateSettingInfo
+  (60 s). Full cmd table: 51 timelapse, 52 videoMode, 53 mirrorMode,
+  54 watermark, 55 displayDataRate, 56 fillLight, 57 indicatorLight,
+  58 timeZone, 59 autoPhotoStatus, 510 videoResolution, 511 eject SD,
+  512 plant-AI {plantAi, aiVisionOverlay, tentDoorOpen}, 514 unit,
+  515 sensorReadings, 516 uvcAutoPhotoStatus, 517 sideCamera.
+  Live no-op probes (values = current getSettingInfo values), classic
+  token header: **cmd 515 → code 200 "success"** (the ONLY success — a
+  server-owned display preference); **cmds 54, 59, 516 → code 500**
+  (server attempts and fails downstream); **cmds 52, 53, 55, 56, 57, 58,
+  510, 514 → code 999999** (validation rejection). Extra form field
+  (appId) poisons any write → 999999. Params in query string + empty
+  body → 500. Mode-A headers (minversion:"", devType:"") change nothing.
+  Trigger test: cmd 59 {autoPhotoStatus=1} and cmd 516
+  {uvcAutoPhotoStatus=1} writes + photoLogs polling ×3 each — **no
+  off-cadence photo**; full-day audit confirms every 2026-11-16 photo
+  after 19:20 sits exactly on the :20/:52 timed cadence. Root cause:
+  the cloud write path is auxiliary/legacy — in app v2.1.1 the settings
+  UI executes via IpcSettingViewModel → P2P CmdSync callbacks, and
+  IpcSettingRepository is injected ONLY into the plant-AI Knowledge
+  ViewModels. Camera-executed settings are P2P-only by design.
+- The signed refresh-token mode (RefreshTokenInterceptor Mode B) is
+  **unreachable in practice**: um7.fetchNewTokenIfNeeded has NO callers
+  in the decompile; POST /api/auth/newToken → 404 (Spring "No message
+  available"), POST /auth/newToken → nginx 405. Not the missing piece.
+- The app syncs settings to the camera over its P2P channel
+  (GqClient.setTakePhotosRegularly(0, interval, …) fires when auto-photo
+  is enabled) — a cloud write alone was never going to arm the camera.
 - State 2026-11-16 evening (updated): the author enabled timed photos in the
   app; cloud settings still read autoPhotoStatus 0, BUT unattended photos
   DID land (~1 h spacing, verified visually) — the app arms the camera
@@ -197,7 +219,7 @@ camera over its P2P channel (the cloud record still reads
 autoPhotoStatus 0 — it does not reflect P2P-side arming). Verified
 2026-11-16: unattended shots landed in the cloud log at ~1 h spacing
 (19:20 ET main cam, 19:52 ET under-canopy; the 19:52 frame was downloaded
-and visually verified — the seedlings in the tent). Pull them with
+and visually verified — the current crop seedlings in the tent). Pull them with
 `aci-photos` like any other cloud photo.
 
 ## Decompile workspace
@@ -221,3 +243,68 @@ Headlines: zero public IPC documentation; controllers-only community projects
 hardware per FCC; PPPP/CS2 attribution from DID + license fingerprints;
 one reviewer runs Spectron 7 timed photos at 6 h intervals; no public reports
 of toggles not sticking or firmware resetting camera settings.
+
+## Phone-free trigger dig — 2026-11-16 late (routes 1–4, ALL NEGATIVE)
+
+Requirement: an on-demand trigger with no phone dependency (Mac/Robin/
+Home Link hosting all approved). Verdict: **NOT FOUND.** Detail per route;
+full log in the goal progress.md.
+
+- **Route 1 — live-start cloud trace: no missing call exists.** The full
+  IpcApiService surface was enumerated. Live-view startup's cloud calls
+  are ONLY: GET /api/ipc/intstr (SDK-init, account-level; verified live
+  200 — same init-string data getP2PInfo already provides), getP2PInfo,
+  getServerIp, getSettingInfo. No session-authorization / live-token /
+  open-stream endpoint exists anywhere in the app. IpcDeviceSession
+  makes zero cloud calls. A missing REST call does NOT explain the
+  standalone-P2P data-phase refusal.
+- **TAKE PHOTO button — traced end-to-end (the author' ask).** Chain:
+  IPCPlayerCover.rtvTakePhoto → clickWithTrigger (synthetic vx2) →
+  IPCPlayerCover.initView$lambda$10 → player view resetToDefault() →
+  SmartCameraViewModel.onTakePhotoClicked(View) →
+  requestPermissionAndCreateFile(ctx, "Image/Snapshot", …) →
+  C01001: ViewHardwareRecorder.captureSingleFrame(videoView, path) →
+  onTakePhotoClicked$1$1$1: PhotoAnimation effect + toast "photo saved
+  to your phone's gallery". **It is (c): a purely local grab of the
+  currently rendered stream frame, saved phone-locally. No cloud REST
+  call, no P2P command.** The camera's true still capture is a SEPARATE
+  path (HD photo mode): PhotoRequestCoordinator (MANUAL lane) →
+  HDPhotoManager.capturePhoto/captureMainPhoto/captureSubPhoto →
+  GqClient.snapshotImg/subSnapshotImg → JNI nativeSnapshotImg →
+  JSON_CMD_SNAPSHOT_IMG (48) over the P2P session; frame returns over
+  P2P. Also zero cloud REST. **There is NO photo upload endpoint in the
+  app** — the only /api/ipc/upload* route is upload/deletePhotos
+  (delete). App-triggered captures appear in cloud photoLogs because
+  the CAMERA uploads its own captures device→cloud.
+- **Route 2 — setting writes:** see the resolved write matrix in the
+  Settings section above. No cloud write arms or fires a capture.
+- **Route 3 — controller surface: nothing.** Live `aci raw`: no
+  `ipcSetting` key anywhere in the account device data (ober37's
+  "always-null" = absent here); no photo/snap keys at all. The tent
+  controller's record embeds the camera's descriptive device-info
+  object (flags: cameraSeries, ipcPro, mqttIPC, pauseCamera state) —
+  no settings or trigger surface. All decompiled camera actions
+  (pauseCamera, lockUnlockIpc, rebootIpc, modIpcName, formattedSdCard)
+  are camera-devId-addressed via /api/ipc/*. Home Link in-home
+  discovery corroborates: no local advertisement from camera or
+  controller (cloud-only by design); Home Link cannot do BLE control
+  or UDP/multicast control traffic in any case.
+- **Route 4 — BLE: not plausible as a trigger.** hunterjm's
+  ac-infinity-ble (v1.0.0) + HACS integration speak BLE to the
+  CONTROLLER: per-port climate loads (fan/light/number/output/switch
+  entities), telemetry, modes. No camera entity or capture function
+  exists in that stack; the README explicitly excludes "secondary
+  device functions". The camera is not a BLE peripheral — it is a
+  Wi-Fi/UIS device driven via cloud/P2P. Reaching it via BLE would
+  require undocumented protocol RE in the APK's base.protocol with no
+  supporting evidence, a BLE host within ~30 ft of the tent (the Mac
+  is not), and winning the controller's single-BLE-client slot from
+  the phone app. Scoped and closed.
+- **USB lead: CLOSED by the author** — the camera's USB plug is power
+  only; no plug-in test will happen.
+- **What remains:** the timed-photo cadence (:20 main / :52 side ET)
+  is the only phone-free capture mechanism that exists in this
+  system's design; the ADB/app route stays a fallback only. Any
+  future on-demand path would have to come from the native-P2P data
+  phase opening (blocked vendor-side, protocol space exhausted) or a
+  future app/firmware change adding a cloud capture endpoint.

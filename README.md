@@ -54,17 +54,28 @@ decompile of the official Android app and live protocol work. See
 | Agent access (MCP, stdio, zero dependencies) | `mcp/server.py` — `aci_status`, `spectron_sensors`, `spectron_photos` |
 | Agent playbooks | `skills/juno/SKILL.md`, `skills/hermes/SKILL.md` |
 
-## What's still being cracked
+## What's settled — and what's still open
 
-- **On-demand snapshots.** The goal is a phone-free trigger — from the
-  controller or the camera itself — and that is still being worked (see
-  the P2P state below). The working fallback today requires a phone
-  running the official app, driven over ADB — open the
-  camera page and screencap the live view for the main camera; tap the
-  picture-in-picture preview to swap to the side (under-canopy) camera,
-  hit Refresh, and screencap again. Screen-resolution frames, but truly
-  on-demand, both cameras. **Native P2P snapshots are still being
-  cracked.** The camera speaks a CS2-networks P2P
+- **On-demand snapshots: no phone-free trigger exists in this system's
+  design (verified 2026-11-16).** A full dig worked every remaining
+  route. The app's Take Photo button is a local grab of the rendered
+  stream frame — no cloud call, no camera command; the camera's true
+  still capture (HD photo mode) sends `JSON_CMD_SNAPSHOT_IMG` (48) over
+  the P2P session only. Live view starts with no session-authorization
+  cloud call (its only cloud calls are the SDK init string, P2P info,
+  server IP, and settings reads). The controller exposes no camera
+  trigger surface, and Bluetooth control reaches only the controller's
+  climate loads — the camera is not a Bluetooth peripheral. The two
+  capture triggers that exist are the device-side timer (phone-free,
+  harvested by `aci-photos`) and the P2P snapshot command below. The
+  working on-demand fallback requires a phone running the official app,
+  driven over ADB — open the camera page and screencap the live view
+  for the main camera; tap the picture-in-picture preview to swap to
+  the side (under-canopy) camera, hit Refresh, and screencap again.
+  Screen-resolution frames, but truly on-demand, both cameras.
+  Full evidence: the "Phone-free trigger dig" section of
+  [docs/SPECTRON-IPC.md](docs/SPECTRON-IPC.md).
+- **Native P2P snapshots.** The camera speaks a CS2-networks P2P
   protocol with a proprietary TCP rendezvous. The login handshake is
   **cracked and reproduced byte-for-byte** (see `p2p-research/`), and the
   relay-session-start packet (`TCPRSStart`) has since been reconstructed
@@ -72,14 +83,16 @@ decompile of the official Android app and live protocol work. See
   all of them live-tested, including during a co-test with the official
   app's live view streaming. The data phase after the handshake still
   refuses every one of them; the blocker is provably not any client
-  packet. The one unworked theory left is a cloud authorization call the
-  app may make when live view starts. `JSON_CMD_SNAPSHOT_IMG`
-  (command 48) is identified and waiting. The MCP server carries
-  `spectron_snapshot` as an experimental stub until this lands — when it
-  does, this repo gets updated.
-- **Cloud settings writes** (`/api/ipc/setting`) return HTTP 500 for every
-  app-shaped request tried. The app also syncs settings to the camera over
-  its P2P channel, which is likely the missing half.
+  packet. `JSON_CMD_SNAPSHOT_IMG` (command 48) is identified and
+  waiting. The MCP server carries `spectron_snapshot` as an
+  experimental stub; a future vendor firmware/app change adding a
+  cloud capture endpoint is the only known path left.
+- **Cloud settings writes** (`/api/ipc/setting`) are auxiliary/legacy:
+  the write repository is wired only into the app's plant-AI screens,
+  and the real settings UI executes over the P2P channel. Live-tested:
+  camera-executed settings fail downstream (500) or fail validation
+  (999999); the one write that returns 200 is a server-owned display
+  preference. Root cause and the full probe matrix are in the dossier.
 
 ## ⚠️ The one trap that will waste your evening
 
