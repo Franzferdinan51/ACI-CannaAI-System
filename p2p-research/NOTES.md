@@ -1,6 +1,6 @@
 # Spectron 7 PPPP dig — notes (2026-11-16 evening)
 
-Goal: open a direct P2P session to the author's Spectron 7 from the Mac Studio,
+Goal: open a direct P2P session to the author' Spectron 7 from the Mac Studio,
 as groundwork for on-demand snapshots. Read-only probing only.
 NO camera credentials (DID/license/key/init-string/crcKey) are stored here —
 they are fetched in-process from the AC Infinity cloud at runtime.
@@ -131,7 +131,7 @@ Full protocol write-up lives in ~/workspace/ac-infinity-tools/SPECTRON-IPC.md
   struct-based sender is the one unresolved packet.
 - **Command numbers**: SNAPSHOT_IMG=48, AUTOPHOTO_SET=47 (enable,
   interval) — from the .so's 62-entry command table + JSON template.
-- **Timed photos WORK** via the author's in-app arming (P2P-side sync):
+- **Timed photos WORK** via the author' in-app arming (P2P-side sync):
   unattended cloud shots at ~1 h spacing verified 2026-11-16 (19:20 main,
   19:52 under-canopy, visually confirmed).
 - **MCP server shipped**: ~/workspace/ac-infinity-tools/mcp/ (aci_status,
@@ -140,3 +140,60 @@ Full protocol write-up lives in ~/workspace/ac-infinity-tools/SPECTRON-IPC.md
   {available: false} until the data phase lands). Installed on the Mac at
   ~/ac-infinity-tools/mcp/ and registered in Hermes' config (Hermes not
   started). p2p_client.py is the drop-in slot for the snapshot client.
+
+## 2026-11-16 late — leads roundup
+- getServerIp socket gateway = provisioning-assigned camera cloud
+  socket (QR payload in IpcWifiSettingViewModel). Not an app channel.
+- LAN: Robin census + OUI triage + LanSearch (plain, bcast+unicast,
+  5 candidates) + TCP probe: all silent. No local listener found.
+- Camera firmware 1.3.8 (post-update read-back via aci raw).
+
+## 2026-11-16 late (2) — TCPRSStart CRACKED (packet), live test negative
+- emu_rsstart.py's NO SEND was two stacked bugs: wrong AAPCS packing
+  (9-param signature — sockaddr belongs in X6, mode uint in X7, out
+  alone on the stack) and the mode uint itself: **uintC=0 sends,
+  uintC=1 silently doesn't** (TCPSend_MSG returns 0). The out buffer
+  is never written on the send path (hypothesis refuted by sentinel).
+- With correct packing the SDK emits a golden TCPRSStart: inner
+  f1 52 00 30 + pack_uid(DID) + BE32 token + sockaddr_cs2 wire form
+  (48B body) — the mirror of RlyRdy's fields at identical offsets.
+  Full layout + golden bytes: devlgn-spec.md §10. Builder in
+  stage28.py self-verifies byte-identical before connecting.
+- No in-lib callers for either TCPRSStart sender in either .so
+  (exported proto surface; orchestration is external). The recv
+  thread parses inbound TCPRSStart — the packet flows both ways.
+- LIVE (stage28, one run): handshake OK (Ack 0 x2, RlyRdy, token +
+  relay :443). TCPRSStart w/ live token+relay sockaddr -> relay node
+  RESET on first packet; -> directory FIN. Packet correct, still not
+  the opener in envelope form. Next variants (untested): raw
+  non-envelope form to relay; own-sockaddr in the slot; co-test with
+  app live view; uintC=1's real send path.
+
+## 2026-11-16 late (3) — TCPRSStart variants round: (a) (b) (d) all closed
+- (a) RAW FORM (emu_rsstart3.py + stage29): Proto_Send_TCPRSStart's
+  wire form = prop_enc(inner52, key) only — SendMessage applies just
+  the layer-1 cipher, then sendto. Golden-verified byte-identical
+  to gqproto.prop_enc. LIVE (one run): -> relay TCP: RST; -> relay
+  UDP datagram (native transport): silent 10 s; -> directory conn:
+  RST. Not the opener on any transport.
+- (b) OWN SOCKADDR (stage30, one run): enveloped TCPRSStart with
+  the slot = our directory-connection local endpoint. -> relay:
+  RST; -> directory: FIN. Identical to stage28 — slot content is
+  not the rejection reason.
+- (d) uintC PATH RESOLVED by disasm + emulation: uintC is a SEND
+  TIMEOUT (ms). TCPSend_MSG: uint==0 -> TCPNBSkt_Send; uint!=0 ->
+  TCPNBSkt_Overtime_Send (sendto loop w/ tick-count deadline; the
+  `out` param is a 1-byte cancel flag, never a packet buffer).
+  Emu: uintC=5000 and =1 both emit the identical 60 B golden
+  envelope via sendto, ret 0. Phase-2's "uintC=1 sends nothing"
+  was a capture blind spot (emu1 hooks TCPNBSkt_Send only; the
+  overtime path sendto's directly). No distinct wire form — its
+  bytes are stage28's, already live-tested.
+- ROUND VERDICT: every TCPRSStart form is reconstructed +
+  golden-verified + tested/closed; none opens the data phase.
+  Blocker is not this packet. Only untested angle left: the app
+  live-view co-test (camera relay binding may exist only while
+  the app holds a session). Full write-up: devlgn-spec.md §11.
+
+## Co-test round 3 (2026-11-16 23:02 ET) — live view held open by the author
+Stages 28/22/20/14/29/30 all failed identically to idle runs (relay RST, dir FIN). Session-binding theory dead. See goal progress.md.

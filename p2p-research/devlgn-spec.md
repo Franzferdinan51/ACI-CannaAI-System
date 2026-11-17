@@ -503,3 +503,178 @@ Validation performed: `crc_enc` (keyless) and `prop_enc` outputs are
 byte-identical to cs2pppp 0.2.11's independent implementations over 200
 random trials using the extracted tables; keyed `crc_enc`/`crc_dec`
 round-trips; the trailer-0x43 check matches CRCDec's four cmps.
+
+## 10. TCPRSStart (inner type 0x52) — relay session start
+
+Reconstructed 2026-11-16 late from disassembly + Unicorn emulation of
+libgqipcsdk.so (emu_rsstart2.py). All example bytes below use FAKE inputs
+(DID "FAKE-123456-ABCDE", token 0xAABBCCDD, sockaddr 192.168.1.X:54321,
+key "FAKEDSK123456789") — no real credentials.
+
+### 10.1 The function family (libgqipcsdk.so)
+
+| Function | Addr | Role |
+|---|---|---|
+| Proto_Write_TCPRSStart | 0x6de04 | fills st_cs2p2p_TCPRSStart from (str, uint, str, uint, sockaddr) |
+| Proto_Read_TCPRSStart | 0x6dd78 | inverse parser (called by thread_recv_Proto — the SDK also RECEIVES this packet) |
+| Proto_TCPSend_TCPRSStart | 0x6de7c | builds + sends via Proto_TCPSend_MSG (TCP envelope) |
+| Proto_Send_TCPRSStart | 0x6ed30 | builds + sends via cs2p2p_SendMessage (raw, sockaddr_in dest — the non-envelope variant) |
+
+No direct or PLT call to either sender exists in libgqipcsdk.so or
+libgqipcsdk_v1.so — the Proto_* layer is an exported library surface;
+orchestration lives outside these two modules. Only Read_TCPRSStart has
+in-lib callers (the receive thread, 2 sites in each lib).
+
+### 10.2 Why the phase-2 emulation captured no send (two stacked bugs)
+
+1. **Arg packing.** The signature is 9 params:
+   (PKc key, i sock, PKc strA, j uintA, PKc strB, j uintB,
+   PKsockaddr_cs2 sa, j uintC, Pc out). AAPCS puts params 7/8 in
+   X6/X7 and param 9 alone on the stack. emu_rsstart.py passed only 6
+   register args and put (sa, 0, out) on the stack — so the function
+   read its sockaddr from a stale register and its out pointer from
+   the sockaddr slot.
+2. **uintC is a mode selector.** With correct packing: uintC=0 →
+   Proto_TCPSend_MSG builds the standard envelope and calls
+   cs2_TCPNBSkt_Send. uintC=1 → TCPSend_MSG returns 0 and does NOT
+   send on the TCP path (possibly a raw/UDP path — untested). The old
+   run's stale X7 happened to be 1.
+   The `out` buffer is not written on the send path in either mode
+   (sentinel-verified) — the "writes to out instead of sending"
+   hypothesis is refuted.
+
+### 10.3 Wire format — inner packet, 52 bytes
+
+Header: `f1 52 00 30` (magic, type 0x52, BE16 body length 48).
+Body = st_cs2p2p_TCPRSStart (48 B), identical layout in Write/Read/Send:
+
+| Off | Size | Field |
+|---|---|---|
+| +0x00 | 8 | DID part 1, strncpy 7 + NUL pad (cf. pack_uid) |
+| +0x08 | 4 | DID number, BE32 |
+| +0x0C | 8 | DID part 3, strncpy 7 + NUL pad |
+| +0x14 | 4 | session token / free uint, BE32 |
+| +0x18 | 24 | sockaddr_cs2 in htonAddrCS2 wire form (= gqproto.pack_sockaddr for the first 8 B, rest zero) |
+
+Golden inner (fake inputs above):
+
+    f1520030 46414b4500000000 0001e240 4142434445000000 aabbccdd
+    000231d43201a8c0 00000000000000000000000000000000
+
+Golden enveloped form (60 B, as handed to cs2_TCPNBSkt_Send; keyA is
+per-packet, header = BE16 len | 68 00 | keyA | CheckCRC | payload):
+
+    0034680078f0d31fe975d410ca20594e76dba7c843935986266a05146505740e
+    cfc398a331106366ec770b2e8708b0d4dd09e53234d6204b03bb8d0a
+
+Field semantics: the body is exactly pack_uid(DID) + BE32 + sockaddr —
+the same three values an inbound RlyRdy (also type 0x52) carries at the
+same offsets (token @+0x14, relay sockaddr @+0x18). TCPRSStart is the
+client→relay counterpart of RlyRdy: "start the session the directory
+just issued" (uid = device DID, token = RlyRdy's per-session token,
+sockaddr = RlyRdy's relay-node sockaddr).
+
+### 10.4 Live test (stage28.py, one run, 2026-11-16 late)
+
+Fresh handshake on directory server 1: RlyReqAck result=0 ×2, RlyRdy
+received (token + relay node :443 parsed). TCPRSStart built from the
+live values, builder asserted byte-identical to the golden first.
+
+- → relay node as first packet: **connection RESET** (same as every
+  other first packet in stages 14–27).
+- → directory connection (fallback, same session): **closed (FIN)**.
+
+Verdict: the packet is fully reconstructed and golden-verified, but
+TCPRSStart alone, in envelope form, is NOT accepted as the opener at
+either target. Untested variants for the next round: (a) the raw
+non-envelope form (Proto_Send_TCPRSStart's output) over the relay TCP
+connection; (b) sockaddr slot = our own sockaddr instead of the relay's;
+(c) TCPRSStart during an app live-view co-test (camera relay binding
+may need to be live); (d) uintC=1's actual send path (raw sendto?).
+
+**All of (a), (b) and (d) were worked in the variants round — see
+§11. Only (c), the app live-view co-test, remains untested.**
+
+## 11. TCPRSStart variants round (2026-11-16 late, stages 29–30 + emu_rsstart3.py)
+
+### 11.1 Variant (a) — the raw non-envelope form
+
+`Proto_Send_TCPRSStart` @0x6ed30 builds the identical 52 B inner
+packet and calls `cs2p2p_SendMessage(key, pkt, 52, sock, dest_in)`.
+SendMessage (disasm @0x668d8) applies ONLY the layer-1
+`_P2P_Proprietary_Encrypt` (keyed by the same key argument; raw
+memcpy if the key is empty) and `sendto()`s the result — no envelope
+header, no CheckCRC, no keyA relay layer. Emulation
+(emu_rsstart3.py exp. A) captured the sendto: 52 B, byte-identical
+to `gqproto.prop_enc(inner, key)`. Golden raw form (same fake
+inputs as §10.3):
+
+    2666c61f44d787255bb700d7cccf69eda670060ba6326bff3e8cf685a630ed33
+    72f7e1245274225ed23c274e12a7e495b700d7cc
+
+Live test (stage29.py, one run; fresh handshake, RlyRdy token +
+relay node :443):
+
+- raw form over a fresh TCP connection to the relay node:
+  **connection RESET** on first packet.
+- raw form as a UDP datagram to the relay node (SendMessage's
+  native transport): **no reply within 10 s**.
+- raw form on the handshaken directory connection:
+  **connection RESET**.
+
+Verdict: the raw form is fully reconstructed and golden-verified,
+and is NOT the data-phase opener on any of the three transports.
+
+### 11.2 Variant (b) — own sockaddr in the +0x18 slot
+
+Enveloped TCPRSStart with the sockaddr slot = our own advertised
+sockaddr (the directory connection's local endpoint, the address
+RlyReq already advertises), token from the live RlyRdy
+(stage30.py, one run; builder golden-asserted first):
+
+- → relay node as first packet: **connection RESET**.
+- → directory connection (fallback): **closed (FIN)**.
+
+Verdict: identical outcome to stage28. The sockaddr slot's content
+is not what the relay/directory is rejecting.
+
+### 11.3 Variant (d) — the uintC path, RESOLVED (no distinct form)
+
+Disassembly of `Proto_TCPSend_MSG` @0x6d780 settles the semantics
+of its `uint` argument (TCPRSStart's uintC): it is built into the
+envelope first, then —
+
+- uint == 0 → `cs2_TCPNBSkt_Send(sock, frame, len)`.
+- uint != 0 → `cs2_TCPNBSkt_Overtime_Send(sock, frame, len,
+  timeout=uint, out)` @0x67360: a `sendto()` loop (flags 0x4040,
+  connected socket) that retries partial sends until
+  `cs2p2p_CurrentTickCount()` exceeds the timeout; the `out`
+  pointer is a **1-byte cancel flag** (loop aborts with -2 if
+  *out == 1). I.e. **uintC is a send timeout in ms**, and the
+  phase-2-era `out` parameter is the overtime cancel flag — never
+  a packet buffer (consistent with the sentinel result in §10.2).
+
+Emulation proof (emu_rsstart3.py exp. C): with uintC=5000 and
+uintC=1, Overtime_Send is entered once with the frame and the
+timeout passed through verbatim, and the sendto emits the full
+60 B envelope **byte-identical to the §10.3 golden**; TCPSend_MSG
+returns 0 (success). The earlier "uintC=1 sends nothing" was a
+capture blind spot: emu1 hooks only `cs2_TCPNBSkt_Send`, while the
+overtime path `sendto()`s directly.
+
+Verdict: variant (d) has NO distinct wire form — its bytes are
+exactly what stage28 already live-tested. Nothing new to send.
+(This also corrects §10.2 item 2: uintC=1 does not suppress the
+send; it selects the timed-send path.)
+
+### 11.4 Round verdict
+
+Every TCPRSStart form the SDK can emit — envelope (relay-sockaddr,
+own-sockaddr), raw prop_enc form over relay TCP / relay UDP /
+directory TCP, and the timed-send path — is now reconstructed,
+golden-verified, and live-tested or emulation-closed. None opens
+the data phase: the relay node RSTs every first packet and the
+directory accepts only RlyReq. The blocker is therefore not the
+TCPRSStart packet in any form. Remaining untested angle: the app
+live-view co-test (variant (c) above) — whether the camera's relay
+binding exists only while the vendor app holds a session.

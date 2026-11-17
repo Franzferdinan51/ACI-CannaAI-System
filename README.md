@@ -57,8 +57,14 @@ decompile of the official Android app and live protocol work. See
 
 - **On-demand snapshots over P2P.** The camera speaks a CS2-networks P2P
   protocol with a proprietary TCP rendezvous. The login handshake is
-  **cracked and reproduced byte-for-byte** (see `p2p-research/`); the data
-  phase after the handshake is the open problem. `JSON_CMD_SNAPSHOT_IMG`
+  **cracked and reproduced byte-for-byte** (see `p2p-research/`), and the
+  relay-session-start packet (`TCPRSStart`) has since been reconstructed
+  byte-for-byte too, along with every variant the vendor SDK can emit —
+  all of them live-tested, including during a co-test with the official
+  app's live view streaming. The data phase after the handshake still
+  refuses every one of them; the blocker is provably not any client
+  packet. The one unworked theory left is a cloud authorization call the
+  app may make when live view starts. `JSON_CMD_SNAPSHOT_IMG`
   (command 48) is identified and waiting. The MCP server carries
   `spectron_snapshot` as an experimental stub until this lands — when it
   does, this repo gets updated.
