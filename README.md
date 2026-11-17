@@ -161,6 +161,26 @@ their own gear and account. Protocol facts about the vendor SDK
 (init-string table, session S-box, directory servers) were extracted from
 the official Android app.
 
+This project also stands on earlier community work on AC Infinity's
+unofficial cloud API — all of it controller-focused, and all of it worth
+your time if you run these controllers:
+
+- **[dalinicus/homeassistant-acinfinity](https://github.com/dalinicus/homeassistant-acinfinity)**
+  — the Home Assistant integration; its API client was the reference this
+  project's `aci` tooling was first built against. (Its issue #156 is an
+  open request for Spectron video support — the camera work in this repo
+  is, as far as we can tell, the first public answer to it.)
+- **[ober37/ac-infinity-mcp](https://github.com/ober37/ac-infinity-mcp)**
+  — an MCP server for the controllers with the most complete public
+  write-up of the cloud API (`docs/API.md`).
+- **joshuaseidel's fork** of the Home Assistant integration — its AI+
+  controller data reference (100+ data points) helped map the AI-program
+  settings.
+
+The Spectron camera half — the `/api/ipc/` cloud endpoints, the photo
+pulls, and the CS2 P2P reverse engineering — had no public prior work to
+build on and is original to this repo.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
