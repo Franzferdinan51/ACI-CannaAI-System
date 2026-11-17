@@ -197,7 +197,7 @@ camera over its P2P channel (the cloud record still reads
 autoPhotoStatus 0 — it does not reflect P2P-side arming). Verified
 2026-11-16: unattended shots landed in the cloud log at ~1 h spacing
 (19:20 ET main cam, 19:52 ET under-canopy; the 19:52 frame was downloaded
-and visually verified — PK2 seedlings in the tent). Pull them with
+and visually verified — the seedlings in the tent). Pull them with
 `aci-photos` like any other cloud photo.
 
 ## Decompile workspace

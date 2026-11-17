@@ -1,27 +1,46 @@
 # ACI-CannaAI-System
 
-**The AC Infinity camera API nobody documented — reverse-engineered, tooled, and open.**
+**A complete AC Infinity automation system — controllers, cameras, a live
+data feed, and AI-agent access — reverse-engineered and open.**
 
-Every public AC Infinity project covers *controllers*. The Spectron cameras
-(3 and 7) had **zero** public API documentation — no endpoints, no photo
-access, nothing. This repo is the system built by pulling a Spectron 7 apart
-at the protocol level: the unofficial cloud IPC API, the camera's CS2 P2P
-protocol, working command-line tools, and an MCP server so an AI agent can
-run the grow room.
+This is the whole stack that runs a real home grow room, published so anyone
+with AC Infinity gear can build the same thing:
 
-Built for a real home grow (the "CannaAI" half — twice-daily automated plant
-checks with leaf temperature and leaf-VPD from the camera's thermal sensor),
-but everything here works for anyone with AC Infinity gear and an account.
+- **Monitor everything.** Controllers (temperature, humidity, VPD, every
+  port and device) *and* the Spectron camera's own sensors — including
+  **leaf temperature and leaf VPD** from its thermal sensor, numbers the
+  official app barely surfaces.
+- **Control the room.** Port modes and values, the controller AI program,
+  schedules — the full unofficial cloud API, wrapped in one CLI.
+- **See the plants.** Pull the Spectron's cloud photos programmatically
+  (timed shots included), on a schedule, into your own pipeline.
+- **Feed your software.** A 10-minute collector keeps a local JSON feed
+  fresh for dashboards and automations.
+- **Let an agent run it.** An MCP server plus ready-made agent skills (the
+  exact playbooks two different AI agents operate this system with) — the
+  "CannaAI" half: twice-daily automated grow checks that combine probe
+  readings, leaf readings, and camera photos, and flag disease or pests.
+
+The cameras were the undocumented part. Every public AC Infinity project
+covers controllers; the Spectron 3/7 had **zero** public API documentation
+— no endpoints, no photo access, nothing. The camera half of this repo
+(cloud IPC API + CS2 P2P reverse engineering) was built from a jadx
+decompile of the official Android app and live protocol work. See
+[docs/SPECTRON-IPC.md](docs/SPECTRON-IPC.md).
 
 ## What works today
 
 | Capability | How |
 |---|---|
-| Controller status (temp / RH / VPD / ports) | `tools/aci.py status` |
-| Camera sensors — **leaf temp, leaf VPD**, thermal min/avg/max | the `ipc` object in the raw device list, or the MCP `spectron_sensors` tool |
+| Controller status (temp / RH / VPD / ports / devices) | `tools/aci.py status` |
+| Controller writes (port mode/value, AI program, schedules) | `tools/aci.py` — see the safety note |
+| Camera sensors — **leaf temp, leaf VPD**, thermal min/avg/max | the `ipc` object in the raw device list, or MCP `spectron_sensors` |
 | **Pull camera photos from the cloud** | `tools/aci-photos.py` (read the day-window warning below) |
-| Timed photos | arm Auto Photo in the official app once; pull the results with `aci-photos` |
+| Timed photos | arm Auto Photo in the official app once; pull results with `aci-photos` |
+| Always-fresh local data feed | `tools/acinfinity-apifeed.py` + `macos/com.example.acinfinity-collect.plist` (every 10 min) |
+| Legacy app-scrape fallback | `tools/acinfinity-collect.sh` (ADB, manual use) |
 | Agent access (MCP, stdio, zero dependencies) | `mcp/server.py` — `aci_status`, `spectron_sensors`, `spectron_photos` |
+| Agent playbooks | `skills/juno/SKILL.md`, `skills/hermes/SKILL.md` |
 
 ## What's still being cracked
 
@@ -66,6 +85,10 @@ export ACI_TENT_DEV_ID=<your controller devId>   # only for tools/ml-pause.py
 # 4. Use it.
 python3 tools/aci.py status
 python3 tools/aci-photos.py --days 2 --download ~/spectron-photos
+
+# 5. (Optional, macOS) keep the data feed fresh: edit the paths in
+#    macos/com.example.acinfinity-collect.plist to your install, copy it to
+#    ~/Library/LaunchAgents/, and `launchctl load` it.
 ```
 
 **Your token is full account access.** It lives in
@@ -95,12 +118,20 @@ See [mcp/README.md](mcp/README.md) for the tool list and protocol notes.
 ## Layout
 
 - `tools/` — `aci.py` (controllers + raw API), `aci-photos.py` (photo log
-  pulls), `aci-login.py` (token setup), plus the CannaAI dashboard feed and
-  pause helpers the original system runs on.
-- `mcp/` — the MCP server (`server.py`, `p2p_client.py` is the snapshot
+  pulls), `aci-login.py` (token setup), `acinfinity-apifeed.py` (the local
+  data feed), `acinfinity-collect.sh` (legacy ADB scrape fallback),
+  `ml-pause.py` (pause helper for the grow dashboard).
+- `mcp/` — the MCP server (`server.py`; `p2p_client.py` is the snapshot
   client's drop-in slot).
+- `skills/` — the agent playbooks this system is actually operated with:
+  the full operations skill (`juno/`) and a second agent's variant
+  (`hermes/`). Start with these if you want an AI running your room.
+- `macos/` — the LaunchAgent that runs the data feed every 10 minutes.
 - `docs/SPECTRON-IPC.md` — the full camera dossier: endpoints, auth, traps,
   settings command codes, P2P state.
+- `docs/spectron-research-report.md` — the research pass behind the camera
+  work: what exists publicly (nothing), the Spectron 3/7 platform identity,
+  and how the P2P stack was identified.
 - `p2p-research/` — the P2P reverse-engineering trail: notes, the DevLgn/relay
   spec, extracted crypto tables, SDK emulation scripts (`emu*.py`), and the
   live probe stages (`stage*.py`). Research code — it hardcodes nothing of
@@ -108,16 +139,16 @@ See [mcp/README.md](mcp/README.md) for the tool list and protocol notes.
 
 ## Safety
 
-The read paths are safe to run anytime. The controller **write** commands in
-`aci.py` change real grow equipment (lights, fans, humidifiers) — a wrong
-change costs plants, not tokens. Use them deliberately.
+The read paths are safe to run anytime. The controller **write** commands
+change real grow equipment (lights, fans, humidifiers) — a wrong change
+costs plants, not tokens. Use them deliberately.
 
 ## Credits
 
-Reverse engineering, tools, and docs by **Franzferdinan51** and **Juno**
-(his AI agent), November 2026, against their own camera and account.
-Protocol facts about the vendor SDK (init-string table, session S-box,
-directory servers) were extracted from the official Android app.
+Built by **Franzferdinan51** and **Juno** (his AI agent), 2026, against
+their own gear and account. Protocol facts about the vendor SDK
+(init-string table, session S-box, directory servers) were extracted from
+the official Android app.
 
 ## License
 
