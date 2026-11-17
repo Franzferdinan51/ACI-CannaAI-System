@@ -48,6 +48,7 @@ decompile of the official Android app and live protocol work. See
 | Camera sensors — **leaf temp, leaf VPD**, thermal min/avg/max | the `ipc` object in the raw device list, or MCP `spectron_sensors` |
 | **Pull camera photos from the cloud** | `tools/aci-photos.py` (read the day-window warning below) |
 | Timed photos | arm Auto Photo in the official app once; pull results with `aci-photos` |
+| On-demand photos (both cameras) | drive the official app over ADB: screencap the live view; tap the picture-in-picture preview to swap to the side camera, Refresh, screencap again |
 | Always-fresh local data feed | `tools/acinfinity-apifeed.py` + `macos/com.example.acinfinity-collect.plist` (every 10 min) |
 | Legacy app-scrape fallback | `tools/acinfinity-collect.sh` (ADB, manual use) |
 | Agent access (MCP, stdio, zero dependencies) | `mcp/server.py` — `aci_status`, `spectron_sensors`, `spectron_photos` |
@@ -55,7 +56,13 @@ decompile of the official Android app and live protocol work. See
 
 ## What's still being cracked
 
-- **On-demand snapshots over P2P.** The camera speaks a CS2-networks P2P
+- **On-demand snapshots.** Working today, through the official app:
+  a phone running the AC Infinity app, driven over ADB — open the
+  camera page and screencap the live view for the main camera; tap the
+  picture-in-picture preview to swap to the side (under-canopy) camera,
+  hit Refresh, and screencap again. Screen-resolution frames, but truly
+  on-demand, both cameras. **Native P2P snapshots are still being
+  cracked.** The camera speaks a CS2-networks P2P
   protocol with a proprietary TCP rendezvous. The login handshake is
   **cracked and reproduced byte-for-byte** (see `p2p-research/`), and the
   relay-session-start packet (`TCPRSStart`) has since been reconstructed
