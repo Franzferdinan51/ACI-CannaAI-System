@@ -70,7 +70,7 @@ The camera's sensors ride inside the `ipc` object of `aci raw`
 climateSensorOnline, temperatureF, humidity, vpdnums (leaf-aware VPD).
 First read 2026-11-16: leaf 63.0°F vs 71.7°F air; cam VPD 0.70 vs probe 0.82.
 
-### Settings — read works, write does NOT (yet)
+### Settings — read works; writes root-caused (cloud write path is auxiliary — see the resolved matrix below)
 
 - getSettingInfo fields of note at setup: autoPhotoStatus 0,
   autoPhotoInterval null, timeInterval null, timeLapseStatus 0,
@@ -120,7 +120,7 @@ First read 2026-11-16: leaf 63.0°F vs 71.7°F air; cam VPD 0.70 vs probe 0.82.
   Timer arming is proven only by a photo arriving while nobody is in the
   app — which is now the observed state.
 
-## P2P (dig phases 1–2 done 2026-11-16/17 — rendezvous CRACKED, data phase open)
+## P2P (phases 1–2: rendezvous CRACKED, hand-rolled data phase refused — SOLVED in phase 3 via the genuine library; see the final section of this file)
 
 - **Confirmed: CS2 PPCS.** Both app native libs (libgqipcsdk.so,
   libgqipcsdk_v1.so) embed the CS2 SDK (internal cs2p2p_* symbols, full
@@ -199,6 +199,14 @@ Two untested explanations remain, in order of likelihood:
 2. An extra client→relay binding packet sent via function-pointer
    dispatch not yet identified (the one unresolved sender is
    TCPRSStart, whose argument layout is struct-based).
+
+**Superseded 2026-11-16 late:** both explanations were overtaken by
+testing — co-tests run while the app held a live session (explanation
+1) were still refused, and TCPRSStart was fully reconstructed and
+live-tested in every form the SDK can emit (explanation 2) without
+opening the phase. The actual answer was neither: it was the session
+orchestration only the genuine library performs. See "Genuine-SDK
+session" at the end of this file.
 
 The SDK's documented data path is PPCS_Write → thread_send_DRW with the
 session key (= DSK) — so when the binding is live, DRW/DC as built here
@@ -354,6 +362,10 @@ Why it works: our packets were already byte-identical; the blocker was
 session orchestration that only the genuine library performs. Full
 recipe + harness sources + evidence frames:
 ~/workspace/spectron-pppp/harness/ (README.md is the MCP-wiring
-recipe). spectron_snapshot is now implementable: emulator+harness up →
-feed creds → snapshot → pull photo_type4_*.jpg (main) /
-photo_type5_*.jpg (sub) via adb exec-out run-as.
+recipe). spectron_snapshot is IMPLEMENTED on exactly that recipe
+(mcp/server.py v1.1.0 + p2p_client.py) and live-tested end-to-end
+through the MCP tool on 2026-11-17 ~00:05 ET: 71.5 s total, connect 0
+in 172 ms, main still overlay-verified 00:05:05 AM, sub still
+delivered (near-black at night — the sub cam has no IR). One earlier
+test attempt stalled at connect inside the SDK's auto-reconnect; the
+tool now saves status + logcat diagnostics on failure.

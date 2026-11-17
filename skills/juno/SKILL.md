@@ -1,6 +1,6 @@
 ---
 name: local-ac-infinity
-description: Read and control the author's AC Infinity controllers (3x3 Tent + Clone Chamber) through their cloud API with the `aci` CLI on the Mac Studio — live temp/RH/VPD readings and per-port levels/modes, replacing the old ADB screencap scrape. Use when the author asks about tent/clone-chamber conditions, grow gear state, or wants a fan/light/humidifier changed or the tent paused/unpaused.
+description: Read and control the author' AC Infinity controllers (3x3 Tent + Clone Chamber) through their cloud API with the `aci` CLI on the Mac Studio — live temp/RH/VPD readings and per-port levels/modes, replacing the old ADB screencap scrape. Use when the author asks about tent/clone-chamber conditions, grow gear state, or wants a fan/light/humidifier changed or the tent paused/unpaused.
 ---
 
 # AC Infinity — cloud API tool (`aci`)
@@ -15,7 +15,7 @@ client (dalinicus/homeassistant-acinfinity). Built 2026-11-03.
 - Tool: `~/ac-infinity-tools/aci.py` on the Mac (master: `~/workspace/ac-infinity-tools/`), wrapper `~/bin/aci`. Stdlib-only; runs on /usr/bin/python3.
 - Auth: DONE 2026-11-03 (his password was right first try). `~/bin/aci-login` — ONE interactive run in a Mac Terminal. Prompts for the AC Infinity email/password, stores ONLY the account token at `~/.config/aci/token.json` (600). Password never stored. If the token ever dies, re-run it. His account email is his Gmail (you@example.com); the password is AC Infinity's own, not the Gmail password.
 - **Cloud sync lag on writes is real**: a mode write can read back stale for ~1 min (the `set` command polls up to ~90s before believing the result). Don't judge a write by an instant re-read.
-- **The AI program is the real pause layer — RESOLVED 2026-11-03** by decompiling the official app (v2.1.1, jadx): AI controllers run an "ML" program (GET `/api/dev/ml/byDevId/{devId}`) whose `state` field is the switch — **0 = paused, 1 = AI running, 2 = TentWork session** (a timed work burst; when its countdown ends the program settles into state 1, it does NOT go back to paused). While the program runs (state 1/2) it overrides port modes entirely — port OFF/AUTO writes read back fine but change nothing physical. The app flips state by POSTing the whole record to `POST /api/dev/ml` as a form field map containing ONLY the NetMlInfo wire fields (lists ride as the `portDetailsStr`/`portSensorsStr` JSON companions); echoing the GET record verbatim is rejected with code 999999. `aci pause`/`aci on` implement exactly this and verify state + watched settings after the write. Ground truth is still physical: port levels in `aci status` (the `speak` field) or the author's eyes — never a mode read-back. History: setting ports OFF→AUTO on 2026-11-03 did nothing because the program was dormant at state 0; the morning's "paused" tent was that dormant state.
+- **The AI program is the real pause layer — RESOLVED 2026-11-03** by decompiling the official app (v2.1.1, jadx): AI controllers run an "ML" program (GET `/api/dev/ml/byDevId/{devId}`) whose `state` field is the switch — **0 = paused, 1 = AI running, 2 = TentWork session** (a timed work burst; when its countdown ends the program settles into state 1, it does NOT go back to paused). While the program runs (state 1/2) it overrides port modes entirely — port OFF/AUTO writes read back fine but change nothing physical. The app flips state by POSTing the whole record to `POST /api/dev/ml` as a form field map containing ONLY the NetMlInfo wire fields (lists ride as the `portDetailsStr`/`portSensorsStr` JSON companions); echoing the GET record verbatim is rejected with code 999999. `aci pause`/`aci on` implement exactly this and verify state + watched settings after the write. Ground truth is still physical: port levels in `aci status` (the `speak` field) or the author' eyes — never a mode read-back. History: setting ports OFF→AUTO on 2026-11-03 did nothing because the program was dormant at state 0; the morning's "paused" tent was that dormant state.
 - His tent controller is devType 20 (Controller AI+) → the modeAndSetting PUT path; the Clone Chamber is devType 11 → addDevMode path.
 - Status readings: `deviceInfo` headline = the controller's own sensor (outside); the `sensors` array carries the probe (accessPort 1 = inside). A controller with no probe (Clone Chamber) reports sentinel garbage — the tool prints "sensors not reporting" instead.
 - API quirks: host `https://www.acinfinityserver.com`; login field is literally `appPasswordl`; the API truncates passwords to 25 chars (the app does the same); auth = the login response's `appId` sent as the `token` header.
@@ -38,13 +38,13 @@ client (dalinicus/homeassistant-acinfinity). Built 2026-11-03.
 
 - **3x3 Tent** (code H-TENTCODE): port 1 Grow Light, 2 Fan, 3 Exhaust Fan, 4 Humidifier (5/7/8 unused, 6 unconfigured as of Oct 2026).
 - **Clone Chamber** (code G-CHAMBERCODE): Grow Light + Growlight + spares; its sensors have historically read dashes (no probe data).
-- 2026-11-03 end state: tent AI woken via TentWork (verified physically running + WeedCam photo), then **paused again at the author's order** (no plants in the tent right now) — state 0, all ports level 0, program targets intact (70–80°F, 30–50% RH, VPD 0.80–1.20, ports 1,2,3,4,6).
+- 2026-11-03 end state: tent AI woken via TentWork (verified physically running + WeedCam photo), then **paused again at the author' order** (no plants in the tent right now) — state 0, all ports level 0, program targets intact (70–80°F, 30–50% RH, VPD 0.80–1.20, ports 1,2,3,4,6).
 
 ## Spectron 7 camera (set up by the author 2026-11-16)
 
 - The camera is a UIS child of the 3x3 Tent controller — in `aci raw` it is the
   tent device's `ipc` object (devType 10001, devId …710774, code YOUR_CAMERA_CODE,
-  fw 1.3.5). It does NOT appear in `aci controllers`/`aci status` output.
+  fw 1.3.5 at setup — the author updated it 2026-11-16 evening). It does NOT appear in `aci controllers`/`aci status` output.
 - **Sensor data IS readable now** from `deviceInfo` inside `ipc` (×100 ints):
   `thermalImagingSensorOnline` (1 = live), `thermalCenter`/`thermalAvg`/
   `thermalMin`/`thermalMax` (°C×100 — thermalCenter = leaf temp; also mirrored
@@ -75,37 +75,49 @@ client (dalinicus/homeassistant-acinfinity). Built 2026-11-03.
   even after the author enabled timed photos in the app 2026-11-16 evening —
   whether the timer is truly armed is proven only by an unattended shot
   landing.
-- **Enabling photo modes from the API is NOT cracked:** /api/ipc/setting is a
-  form POST of {fields…, devId, cmd} — cmd codes from IpcSettingRepository:
+- **Enabling photo modes from the API — root-caused 2026-11-16 late; not
+  a usable path:** /api/ipc/setting is a form POST of {fields…, devId,
+  cmd} (cmd appended last) — cmd codes from IpcSettingRepository:
   51 timelapse, 59 auto-photo status, 516 side-cam auto-photo, 58 timezone,
-  510 resolution, 512 plant AI. App-shaped writes (incl. the app's
-  HeaderInterceptor headers: token, appVersion 2.1.1, phoneType 2,
-  languageType, minversion/devType from the RefreshTokenInterceptor) still
-  return 500 — the app also syncs settings to the device over its P2P channel
-  (gqClient.setTakePhotosRegularly), and a refresh-token auth subsystem
-  (/api/auth/newToken) exists in the app. Practical route: the author enables
-  Auto Photo in the app once; `aci-photos` pulls from then on.
+  510 resolution, 512 plant AI, 515 sensor readings. Live no-op probe
+  matrix: cmd 515 → 200 (the ONLY success — a server-owned display
+  preference); camera-executed cmds (54/59/516) → 500; the rest → 999999.
+  Root cause: the cloud write path is auxiliary/legacy — the app's real
+  settings UI executes over its P2P channel (CmdSync callbacks;
+  gqClient.setTakePhotosRegularly arms auto-photo), and the repository is
+  wired only into the plant-AI screens. The refresh-token mode is a dead
+  end (fetchNewTokenIfNeeded has no callers; /api/auth/newToken → 404).
+  Practical route stands: the author enables Auto Photo in the app once;
+  `aci-photos` pulls from then on. Full matrix: SPECTRON-IPC.md.
 - **Timed photos: WORKING (verified 2026-11-16 evening).** the author enabled
   Auto Photo in the app; unattended shots landed in the cloud log at ~1 h
   spacing (19:20 ET main cam, 19:52 ET under-canopy — the latter visually
-  verified: the seedlings in frame). The cloud settings record STILL reads
+  verified: the current crop seedlings in frame). The cloud settings record STILL reads
   autoPhotoStatus 0 — it does not reflect the app's P2P-side arming; judge
   arming by photos landing, never by the settings record.
-- **P2P phase 2 (2026-11-17): rendezvous handshake CRACKED, data phase
-  blocked.** The TCP envelope + plain TCPRlyReq handshake against the 3
-  directory servers is byte-verified (my packets are identical to the
-  SDK's own) and reproduces live: RlyReqAck result=0 → RlyRdy carrying a
-  per-session token + relay node. But every reconstructed data packet
-  (DC/DRW/Alive/TCPRSLgn, both envelope forms) is refused — directory
-  FINs, relay node RSTs. Leading theory: the camera's relay data binding
-  is only live while the app holds a session; needs a co-test with the
-  app's live view open. Command numbers learned: SNAPSHOT_IMG=48,
-  AUTOPHOTO_SET=47. Full protocol section: SPECTRON-IPC.md.
-- **MCP server (2026-11-17):** ~/workspace/ac-infinity-tools/mcp/ (Mac:
-  ~/ac-infinity-tools/mcp/, registered in Hermes' config) — stdio tools
-  `aci_status`, `spectron_sensors`, `spectron_photos` (live-verified) and
-  `spectron_snapshot` (experimental stub — returns available:false until
-  the P2P data phase lands; p2p_client.py is the drop-in slot).
+- **P2P research — CLOSED 2026-11-16/17: hand-rolled protocol refused,
+  genuine library works.** My reimplemented client reproduced the
+  rendezvous handshake byte-for-byte (TCPRlyReq → RlyReqAck result=0 →
+  RlyRdy with per-session token + relay node) and every data packet was
+  golden-verified against the SDK — yet the vendor servers refused the
+  data phase in EVERY form tried (all TCPRSStart variants, DC/DRW/Alive,
+  raw + envelope), including co-tests while the app streamed (the
+  session-binding theory is dead). The blocker was never packet bytes:
+  it is the session orchestration only the genuine library performs —
+  `nativeConnect` takes a COMPOSITE credential string
+  (`intstr + ":" + key` from getP2PInfo) and flags value 122, details
+  the reimplementation never had. Running the genuine libgqipcsdk.so
+  connects in ~0.1–1.1 s, 6/6 sessions. Command numbers: SNAPSHOT_IMG=48,
+  AUTOPHOTO_SET=47. Full protocol + dig record: SPECTRON-IPC.md.
+- **MCP server (v1.1.0, 2026-11-17):** ~/workspace/ac-infinity-tools/mcp/
+  (Mac: ~/ac-infinity-tools/mcp/, registered in Hermes' config) — stdio
+  tools `aci_status`, `spectron_sensors`, `spectron_photos` and
+  `spectron_snapshot`, ALL live. `spectron_snapshot` is real: it boots
+  an ephemeral Android-emulator rig on the Mac running the vendor's own
+  SDK (see the on-demand section below), ~71 s end-to-end in the live
+  test, and returns both cameras' stills. On failure it returns
+  {available:false, status:"failed", detail:…} with the SDK codes and
+  saves diagnostics — an occasional connect stall is possible.
 - Community references (ober37 API.md, both HA forks) document ZERO camera
   endpoints — this subsystem is undocumented publicly. Decompile workspace:
   Mac ~/aci-re/ (jadx 1.5.6 + out5–out10 sources).
@@ -116,10 +128,49 @@ client (dalinicus/homeassistant-acinfinity). Built 2026-11-03.
   mac-scp-pull, and read it alongside the Pixel/Blink shots — the Spectron
   overhead view is the best of the three (labels readable, all four plants
   in frame). The under-canopy frame (smaller file, no watermark) covers
-  soil level. Also pull leaf temp + leaf VPD from the `ipc` object in
+  soil level. For a RIGHT-NOW frame between timed shots, call the MCP
+  `spectron_snapshot` tool (both cameras; ~1–5 min with rig boot) — its
+  stills are session-only and do NOT enter the cloud log, so don't look
+  for them in `aci-photos` output. Also pull leaf temp + leaf VPD from the `ipc` object in
   `aci raw` on every check. If `aci-photos` returns nothing, first check
   photoLogsDate for a date entry before concluding there are no photos —
   and never query photoLogs with a multi-day window (silently empty).
+- **ON-DEMAND photos — SOLVED 2026-11-16 ~23:57 via the genuine vendor
+  SDK; the MCP `spectron_snapshot` tool is the way.** It boots an
+  ephemeral Android emulator (arm64, RAM-disk rig on the Mac — disks
+  are near-full), loads a harness APK that re-declares the app's own
+  JNI facade classes so the genuine libgqipcsdk.so binds exactly as for
+  the real app, feeds the getP2PInfo credentials in-process (never on
+  disk), and replays the app's exact call sequence. Result: main still
+  3840×2160 (~2 MB) + sub still 1920×1080, ~71 s end-to-end in the live
+  MCP test (connect 0 in 172 ms). Facts to know: SDK stills are
+  delivered to the session ONLY — they do NOT appear in the cloud photo
+  log (use `aci-photos` for the timed album); the sub cam has no IR, so
+  its night stills are near-black; an occasional connect stall can burn
+  a few minutes and fail honestly (diagnostics saved under the rig's
+  last-failure dir). Recipe + harness:
+  ~/workspace/spectron-pppp/harness/README.md; implementation:
+  mcp/p2p_client.py. A resident rig would remove the boot cost but
+  needs ~6 GB of persistent disk — open item.
+- **LEGACY FALLBACK — the app-driven ADB route (superseded 2026-11-16
+  ~23:57; use only if the SDK rig is down).** The Moto G (adb serial
+  YOUR_PHONE_SERIAL) hangs off the Mac by USB with the AC Infinity app logged
+  in. Recipe (all via mac-ssh, `export PATH=$HOME/bin:/opt/homebrew/bin:$PATH`
+  first): wake (`adb -s YOUR_PHONE_SERIAL shell input keyevent 224`) → the app
+  usually sits in live view already; if not: Devices → 3x3 Tent → tap
+  the `video_view` preview → camera page. TOP cam: fullscreen live view,
+  `adb shell screencap -p` = the frame (timestamp + sensor overlay
+  burned in). BOTTOM (side/under-canopy) cam: on the portrait camera
+  page, tap the picture-in-picture preview (right edge of the video,
+  `sub_camera` ~ (650,390) on the 720×1604 screen) → header flips to
+  "Exit Side Camera" → tap **Refresh** ((45,775)) for a fresh frame →
+  screencap; the video region crops to (0,318)-(720,743). Frames are
+  screen-res (1604×720 top / 720×425 crop bottom) — fine for grow
+  checks. Restore the main view afterwards (tap "Exit Side Camera").
+  Verified live 2026-11-16: top 23:08, bottom 23:12. Note: the app's
+  Take Photo button is only a local grab of the rendered stream frame
+  (traced end-to-end) — it never asks the camera for a still and
+  uploads nothing itself.
 
 ## Safety
 
@@ -129,6 +180,6 @@ client (dalinicus/homeassistant-acinfinity). Built 2026-11-03.
 
 ## Dashboard feed (updated 2026-11-03 night)
 
-The dashboard bridge's environment feed (~/dashboard-bridge/acinfinity.json, passed through verbatim at bridge :8901 /api/cannaai) is now written by **~/bin/acinfinity-apifeed.py** (master: ~/workspace/ac-infinity-tools/) — same JSON shape as the scrape produced ({fetched_at, devices[{name, id, inside, outside, ports}], alerts: []}), but sourced from this API tool: inside = accessPort-1 probe (sensorTypes 0/2/3), outside = deviceInfo headline readings (sentinel-guarded), ports carry real mode labels via get_mode_settings + AT_TYPES, ids keep the app-style prefixes (H-TENTCODE / G-CHAMBERCODE). The existing LaunchAgent `com.example.acinfinity-collect` (600 s) now runs the API feed (plist backup: .plist.scrape-era.bak; last scrape-era JSON: acinfinity.json.scrape-era.bak). **The Moto G scrape was retired as the feed source at the author's order** — its every-10-min foregrounding of the AC Infinity app was wigging out the Muse app on that phone.
+The dashboard bridge's environment feed (~/dashboard-bridge/acinfinity.json, passed through verbatim at bridge :8901 /api/cannaai) is now written by **~/bin/acinfinity-apifeed.py** (master: ~/workspace/ac-infinity-tools/) — same JSON shape as the scrape produced ({fetched_at, devices[{name, id, inside, outside, ports}], alerts: []}), but sourced from this API tool: inside = accessPort-1 probe (sensorTypes 0/2/3), outside = deviceInfo headline readings (sentinel-guarded), ports carry real mode labels via get_mode_settings + AT_TYPES, ids keep the app-style prefixes (H-TENTCODE / G-CHAMBERCODE). The existing LaunchAgent `com.example.acinfinity-collect` (600 s) now runs the API feed (plist backup: .plist.scrape-era.bak; last scrape-era JSON: acinfinity.json.scrape-era.bak). **The Moto G scrape was retired as the feed source at the author' order** — its every-10-min foregrounding of the AC Infinity app was wigging out the Muse app on that phone.
 
-The older ADB route still exists as a manual fallback only: `~/bin/acinfinity-collect.sh` scrapes the app on the Moto G (serial YOUR_PHONE_SERIAL, package com.eternal.acinfinity) when the phone is awake/unlocked — read-only, ADB drops often. Do not re-enable it as a scheduled feed without the author's word.
+The older ADB route still exists as a manual fallback only: `~/bin/acinfinity-collect.sh` scrapes the app on the Moto G (serial YOUR_PHONE_SERIAL, package com.eternal.acinfinity) when the phone is awake/unlocked — read-only, ADB drops often. Do not re-enable it as a scheduled feed without the author' word.

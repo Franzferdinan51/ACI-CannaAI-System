@@ -1,11 +1,11 @@
 ---
 name: ac-infinity
-description: Read the author's AC Infinity controllers (3x3 Tent + Clone Chamber) and Spectron 7 camera through the cloud API tools on this Mac — live temp/RH/VPD, port state, camera leaf temp/VPD, and pulling Spectron photos. Use when the author asks about tent conditions, grow gear state, or wants Spectron camera photos.
+description: Read the author' AC Infinity controllers (3x3 Tent + Clone Chamber) and Spectron 7 camera through the cloud API tools on this Mac — live temp/RH/VPD, port state, camera leaf temp/VPD, and pulling Spectron photos. Use when the author asks about tent conditions, grow gear state, or wants Spectron camera photos.
 ---
 
 # AC Infinity — cloud API tools (Hermes copy)
 
-You are on the author's Mac Studio. The tools run LOCALLY in your terminal —
+You are on the author' Mac Studio. The tools run LOCALLY in your terminal —
 no SSH wrapper. Juno (the primary agent) maintains the master copies; this
 skill is your working copy so you can do the same reads if Juno is cut off.
 
@@ -27,7 +27,7 @@ skill is your working copy so you can do the same reads if Juno is cut off.
 
 - Reads are free — run them anytime.
 - **Control writes change real grow equipment** (`aci set`, `aci pause`,
-  `aci on`): only on the author's explicit order for that exact change. A wrong
+  `aci on`): only on the author' explicit order for that exact change. A wrong
   light/fan change costs plants. If a write's read-back doesn't show the
   change, report it — don't retry blindly.
 - The tent runs an AI program that overrides port modes while active;
@@ -51,17 +51,31 @@ skill is your working copy so you can do the same reads if Juno is cut off.
   date index is POST /api/ipc/photoLogsDate (see SPECTRON-IPC.md next to
   this skill for the full contract) — a non-empty date list means photos
   exist for that day.
-- Settings writes from the API do NOT work (server 500s — unsolved; the app
-  also syncs settings to the camera over P2P). If the author wants timed
-  photos changed, he flips it in the AC Infinity app; you pull the results.
+- Settings writes from the API do NOT work — root-caused 2026-11-16:
+  the cloud write path is auxiliary/legacy (only a server-owned display
+  preference succeeds; camera-executed settings return 500/999999) and
+  the app's real settings UI syncs settings to the camera over P2P.
+  If the author wants timed photos changed, he flips it in the AC Infinity
+  app; you pull the results.
 - **Timed photos are ON and verified** (2026-11-16): the author armed them in
   the app and unattended shots land in the cloud log ~hourly. The cloud
   settings record still reads autoPhotoStatus 0 — ignore it; photos
   landing is the proof.
 - An MCP server for these tools is registered in your config as
   `ac-infinity` (~/ac-infinity-tools/mcp/server.py): tools aci_status,
-  spectron_sensors, spectron_photos, and spectron_snapshot (experimental —
-  returns available:false; on-demand P2P snapshots are not cracked yet,
-  only the rendezvous handshake is).
+  spectron_sensors, spectron_photos, and spectron_snapshot — all live.
+- **On-demand snapshots WORK (solved 2026-11-16).** The MCP
+  `spectron_snapshot` tool boots an ephemeral Android-emulator rig on
+  this Mac that runs the vendor's own camera library with the app's
+  exact call sequence (a hand-reimplemented protocol client was refused
+  by the vendor's servers; the genuine library's session orchestration
+  — a composite credential string — was the missing piece). It returns
+  a main-camera still (3840×2160) and a sub-camera still (1920×1080)
+  in ~1–5 min including rig boot. Know: SDK stills are session-only
+  and do NOT appear in the cloud photo log; the sub camera has no IR,
+  so its night stills are near-black; a call occasionally stalls at
+  connect and returns {available:false, status:"failed", detail:…}
+  with diagnostics saved — report that honestly rather than retrying
+  in a loop.
 - Full dossier (endpoint table, traps, P2P state): SPECTRON-IPC.md in this
   same skill folder.
